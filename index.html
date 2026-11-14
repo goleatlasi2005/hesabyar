@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1f3a"><title>حسابیار</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#17243a;font-family:Tahoma,Arial,sans-serif}
+header{background:linear-gradient(135deg,#0b1f3a,#153d62);color:white;padding:25px 18px 30px;border-radius:0 0 25px 25px}
+.brand{font-size:21px;font-weight:bold}.sub{opacity:.75;font-size:12px;margin-top:6px}.balance{margin-top:24px;font-size:13px;opacity:.8}.amount{font-size:29px;font-weight:bold;margin-top:7px}.wrap{padding:16px;max-width:700px;margin:auto}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:-2px}.card{background:white;border-radius:17px;padding:16px;box-shadow:0 5px 18px #142b4510}.card small{color:#7b8798}.num{font-size:19px;font-weight:bold;margin-top:9px}.green{color:#07966a}.red{color:#e05252}
+.panel{background:white;border-radius:17px;padding:16px;margin-top:14px;box-shadow:0 5px 18px #142b450a}.panel h3{margin:0 0 14px;font-size:16px}
+input,select,button{font:inherit}input,select{width:100%;padding:13px;border:1px solid #e1e7ee;border-radius:11px;margin:6px 0;background:#fff}
+button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:white;font-weight:bold;width:100%;margin-top:7px}.tabs{display:flex;gap:8px;margin:14px 0}.tabs button{background:#e4ebf2;color:#27415b}.tabs button.active{background:#0b1f3a;color:white}
+.item{padding:12px 0;border-bottom:1px solid #edf0f4;display:flex;justify-content:space-between;gap:8px;font-size:13px}.item:last-child{border:0}
+.muted{color:#8290a1;font-size:12px}.empty{color:#8793a3;text-align:center;padding:18px;font-size:13px}
+</style></head><body>
+<header><div class="brand">حسابیار</div><div class="sub">مدیریت هوشمند دخل‌وخرج شما</div><div class="balance">موجودی کل</div><div class="amount" id="balance">۰ تومان</div></header>
+<main class="wrap">
+<div class="cards"><div class="card"><small>مجموع درآمد</small><div class="num green" id="income">۰</div></div><div class="card"><small>مجموع هزینه</small><div class="num red" id="expense">۰</div></div></div>
+<div class="tabs"><button class="active" onclick="show('tx',this)">تراکنش‌ها</button><button onclick="show('inst',this)">اقساط</button><button onclick="show('report',this)">گزارش</button></div>
+<section id="tx" class="panel"><h3>ثبت درآمد یا هزینه</h3><select id="kind"><option value="in">درآمد</option><option value="out">هزینه</option></select><input id="title" placeholder="عنوان تراکنش"><input id="amountInput" type="number" inputmode="numeric" placeholder="مبلغ به تومان"><input id="dateInput" type="date"><button onclick="addTx()">ثبت تراکنش</button><h3 style="margin-top:20px">آخرین تراکنش‌ها</h3><div id="transactions"></div></section>
+<section id="inst" class="panel" hidden><h3>افزودن قسط</h3><input id="instTitle" placeholder="عنوان قسط"><input id="instAmount" type="number" inputmode="numeric" placeholder="مبلغ قسط (تومان)"><input id="instDate" type="date"><button onclick="addInst()">ثبت قسط</button><h3 style="margin-top:20px">فهرست اقساط</h3><div id="installments"></div></section>
+<section id="report" class="panel" hidden><h3>گزارش کلی</h3><div id="summary" class="muted"></div></section>
+</main>
+<script>
+const fa=n=>Number(n||0).toLocaleString('fa-IR');
+let tx=JSON.parse(localStorage.getItem('hy_tx')||'[]'), ins=JSON.parse(localStorage.getItem('hy_ins')||'[]');
+function save(){localStorage.setItem('hy_tx',JSON.stringify(tx));localStorage.setItem('hy_ins',JSON.stringify(ins));render()}
+function addTx(){let t=title.value.trim(),a=+amountInput.value;if(!t||a<=0){alert('عنوان و مبلغ معتبر وارد کنید');return}tx.unshift({t,a,k:kind.value,d:dateInput.value||new Date().toISOString().slice(0,10)});title.value='';amountInput.value='';save()}
+function addInst(){let t=instTitle.value.trim(),a=+instAmount.value,d=instDate.value;if(!t||a<=0||!d){alert('اطلاعات قسط را کامل کنید');return}ins.push({t,a,d});if(window.Hesabyar)Hesabyar.notify('قسط جدید ثبت شد',t+' - '+fa(a)+' تومان');instTitle.value='';instAmount.value='';save()}
+function removeTx(i){if(confirm('این تراکنش حذف شود؟')){tx.splice(i,1);save()}}
+function removeInst(i){if(confirm('این قسط حذف شود؟')){ins.splice(i,1);save()}}
+function render(){let inc=tx.filter(x=>x.k==='in').reduce((s,x)=>s+x.a,0),out=tx.filter(x=>x.k==='out').reduce((s,x)=>s+x.a,0);balance.textContent=fa(inc-out)+' تومان';income.textContent=fa(inc)+' تومان';expense.textContent=fa(out)+' تومان';
+transactions.innerHTML=tx.length?tx.map((x,i)=>`<div class="item"><span>${x.t}<br><span class="muted">${x.d}</span></span><span class="${x.k==='in'?'green':'red'}">${x.k==='in'?'+':'−'} ${fa(x.a)} <a href="#" onclick="removeTx(${i});return false">×</a></span></div>`).join(''):'<div class="empty">هنوز تراکنشی ثبت نشده است</div>';
+installments.innerHTML=ins.length?ins.map((x,i)=>`<div class="item"><span>${x.t}<br><span class="muted">${x.d}</span></span><span>${fa(x.a)} تومان <a href="#" onclick="removeInst(${i});return false">×</a></span></div>`).join(''):'<div class="empty">هنوز قسطی ثبت نشده است</div>';
+summary.textContent='تعداد تراکنش‌ها: '+fa(tx.length)+' | تعداد اقساط: '+fa(ins.length)+' | مانده: '+fa(inc-out)+' تومان'}
+function show(id,b){['tx','inst','report'].forEach(x=>document.getElementById(x).hidden=x!==id);document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active')}
+dateInput.value=new Date().toISOString().slice(0,10);render();
+</script></body></html>
