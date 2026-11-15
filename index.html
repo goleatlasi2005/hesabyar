@@ -641,20 +641,7 @@ ${installmentHtml(group.installments[0],true)}
 
 }).join('') :
 '<div class="empty">هنوز قسطی ثبت نشده است</div>';
-
-groups.map(group=>{
-const multi=group.installments.length>1;
-const paidCount=group.installments.filter(x=>x.paid).length;
-const heading=`<div class="group-main"><div class="group-title">${safe(group.plan.t)}</div><div class="group-meta">${fa(group.plan.a)} تومان برای هر قسط · ${group.nextDate?'سررسید بعدی: '+safe(group.nextDate):''}</div></div><span class="group-count">${fa(paidCount)} از ${fa(group.installments.length)} پرداخت</span>`;
-if(multi){
-return `<details class="inst-group"><summary>${heading}</summary><div class="group-body">${group.installments.map(installmentHtml).join('')}<button class="group-delete" onclick="removeInst(${group.planIndex})">حذف کل برنامه اقساط</button></div></details>`;
-}
-return `<div class="inst-group"><div style="padding:12px">${heading}${installmentHtml(group.installments[0])}<button class="group-delete" onclick="removeInst(${group.planIndex})">حذف قسط</button></div></div>`;
-}).join(''):
-'<div class="empty">هنوز قسطی ثبت نشده است</div>';
-
-
-
+const rows = groups.flatMap(group => group.installments);
 const totalRows=rows.length;
 const paidRows=rows.filter(x=>x.paid).length;
 $('summary').textContent=
