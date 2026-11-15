@@ -89,6 +89,7 @@ button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:wh
 <button class="active" onclick="show('tx',this)">تراکنش‌ها</button>
 <button onclick="show('inst',this)">اقساط</button>
 <button onclick="show('report',this)">گزارش</button>
+<button onclick="show('backup',this)">پشتیبان‌گیری</button>
 </div>
 
 <section id="tx" class="panel">
@@ -155,6 +156,23 @@ button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:wh
 <h3>گزارش کلی</h3>
 <div id="summary" class="muted"></div>
 </section>
+  <section id="backup" class="panel" hidden>
+<h3>پشتیبان‌گیری و بازیابی اطلاعات</h3>
+
+<p class="small-note">
+از تمام درآمدها، هزینه‌ها، اقساط و وضعیت پرداخت آن‌ها یک فایل پشتیبان بسازید و در جای امن نگه دارید.
+</p>
+
+<button onclick="createBackup()">تهیه نسخه پشتیبان</button>
+
+<button onclick="chooseRestore()" style="background:#e4ebf2;color:#27415b">
+بازیابی از فایل پشتیبان
+</button>
+
+<p class="small-note">
+توجه: بازیابی، اطلاعات فعلی حسابیار را با اطلاعات فایل پشتیبان جایگزین می‌کند.
+</p>
+  </section>
 </main>
 
 <script>
@@ -280,7 +298,62 @@ localStorage.setItem('hy_tx',JSON.stringify(tx));
 localStorage.setItem('hy_ins',JSON.stringify(ins));
 render();
 }
+  
+function createBackup(){
+const payload={
+app:'hesabyar',
+version:1,
+createdAt:new Date().toISOString(),
+tx:tx,
+ins:ins
+};
 
+if(window.Hesabyar && typeof Hesabyar.exportBackup==='function'){
+Hesabyar.exportBackup(JSON.stringify(payload));
+}else{
+alert('امکان تهیه فایل پشتیبان در این نسخه فعال نیست');
+}
+}
+
+function chooseRestore(){
+if(window.Hesabyar && typeof Hesabyar.importBackup==='function'){
+Hesabyar.importBackup();
+}else{
+alert('امکان بازیابی فایل در این نسخه فعال نیست');
+}
+}
+
+window.restoreBackupFromAndroid=function(raw){
+try{
+const data=JSON.parse(raw);
+
+if(
+!data ||
+data.app!=='hesabyar' ||
+data.version!==1 ||
+!Array.isArray(data.tx) ||
+!Array.isArray(data.ins)
+){
+throw new Error('invalid backup');
+}
+
+if(!confirm('بازیابی اطلاعات، اطلاعات فعلی حسابیار را جایگزین می‌کند. ادامه می‌دهید؟')){
+return;
+}
+
+tx=data.tx;
+ins=data.ins.map(x=>({
+...x,
+paidDates:Array.isArray(x.paidDates)?x.paidDates:[]
+}));
+
+save();
+alert('اطلاعات با موفقیت بازیابی شد');
+
+}catch(e){
+alert('فایل پشتیبان معتبر نیست یا قابل خواندن نیست');
+}
+};
 function addTx(){
 const t=$('title').value.trim();
 const a=+$('amountInput').value;
@@ -489,7 +562,7 @@ $('summary').textContent=
 }
 
 function show(id,b){
-['tx','inst','report'].forEach(x=>$(x).hidden=x!==id);
+['tx','inst','report','backup'].forEach(x=>$(x).hidden=x!==id);
 document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
 b.classList.add('active');
 }
