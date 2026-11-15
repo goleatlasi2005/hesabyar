@@ -486,6 +486,13 @@ ins.splice(i,1);
 save();
 }
 }
+  
+  function removeInstGroup(indices){
+if(confirm('تمام اقساط این گروه حذف شوند؟')){
+indices.sort((a,b)=>b-a).forEach(i=>ins.splice(i,1));
+save();
+}
+  }
 
 function render(){
 const inc=tx.filter(x=>x.k==='in').reduce((s,x)=>s+x.a,0);
