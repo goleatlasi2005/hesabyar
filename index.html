@@ -513,21 +513,59 @@ ${x.k==='in'?'+':'−'} ${fa(x.a)}
 </div>`).join(''):
 '<div class="empty">هنوز تراکنشی ثبت نشده است</div>';
 
-/* ساخت گروه‌های اقساط؛ اقساط تکرارشونده در حالت کشویی */
-let rows=[];
-const groups=ins.map((plan,planIndex)=>{
-const dates=getDates(plan).slice().sort((a,b)=>a.localeCompare(b));
-const installments=dates.map(date=>({
-planIndex,date,title:plan.t,amount:plan.a,
-paid:(plan.paidDates||[]).includes(date)
+
+/* ساخت گروه‌های اقساط؛ گروه‌بندی اقساط تک‌تاریخی با عنوان یکسان */
+
+let groups = [];
+const singleGroups = new Map();
+
+ins.forEach((plan, planIndex) => {
+const dates = getDates(plan).slice().sort((a,b)=>a.localeCompare(b));
+
+const installments = dates.map(date => ({
+planIndex,
+date,
+title: plan.t,
+amount: plan.a,
+paid: (plan.paidDates || []).includes(date)
 }));
-rows.push(...installments);
-const next=installments.find(x=>!x.paid);
-return {planIndex,plan,installments,dates,nextDate:next?next.date:(dates[0]||'')};
-}).filter(g=>g.installments.length);
+
+if (!installments.length) return;
+
+if (plan.mode === 'monthly') {
+const next = installments.find(x => !x.paid);
+groups.push({
+type: 'monthly',
+planIndex,
+plan,
+installments,
+nextDate: next ? next.date : (dates[0] || '')
+});
+} else {
+const key = String(plan.t || '');
+
+if (!singleGroups.has(key)) {
+singleGroups.set(key, {
+type: 'single',
+title: plan.t,
+installments: []
+});
+}
+
+singleGroups.get(key).installments.push(...installments);
+}
+});
+
+singleGroups.forEach(group => {
+group.installments.sort((a,b)=>a.date.localeCompare(b.date));
+const next = group.installments.find(x => !x.paid);
+group.nextDate = next ? next.date : (group.installments[0]?.date || '');
+groups.push(group);
+});
+
 groups.sort((a,b)=>a.nextDate.localeCompare(b.nextDate));
 
-function installmentHtml(row){
+function installmentHtml(row, showDelete = false) {
 return `<div class="item">
 <div style="flex:1;min-width:0">
 <div class="due-date">${safe(row.title)}</div>
@@ -539,11 +577,71 @@ return `<div class="item">
 </div>
 <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px">
 <button class="pay-btn ${row.paid?'paid':''}" onclick="togglePaid(${row.planIndex},'${row.date}')">${row.paid?'✓ پرداخت شد':'پرداخت کردم'}</button>
+${showDelete ? `<button class="group-delete" onclick="removeInst(${row.planIndex})">حذف این قسط</button>` : ''}
 </div>
 </div>`;
 }
 
-$('installments').innerHTML=groups.length?
+$('installments').innerHTML = groups.length ?
+groups.map(group => {
+
+const paidCount = group.installments.filter(x=>x.paid).length;
+const total = group.installments.length;
+
+if (group.type === 'monthly') {
+const heading = `<div class="group-main">
+<div class="group-title">${safe(group.plan.t)}</div>
+<div class="group-meta">${fa(group.plan.a)} تومان برای هر قسط · ${group.nextDate?'سررسید بعدی: '+safe(group.nextDate):''}</div>
+</div>
+<span class="group-count">${fa(paidCount)} از ${fa(total)} پرداخت</span>`;
+
+if (total > 1) {
+return `<details class="inst-group">
+<summary>${heading}</summary>
+<div class="group-body">
+${group.installments.map(row=>installmentHtml(row)).join('')}
+<button class="group-delete" onclick="removeInst(${group.planIndex})">حذف کل برنامه اقساط</button>
+</div>
+</details>`;
+}
+
+return `<div class="inst-group">
+<div style="padding:12px">
+${heading}
+${installmentHtml(group.installments[0])}
+<button class="group-delete" onclick="removeInst(${group.planIndex})">حذف قسط</button>
+</div>
+</div>`;
+}
+
+const heading = `<div class="group-main">
+<div class="group-title">${safe(group.title)}</div>
+<div class="group-meta">${fa(total)} قسط تک‌تاریخی · ${group.nextDate?'سررسید بعدی: '+safe(group.nextDate):''}</div>
+</div>
+<span class="group-count">${fa(paidCount)} از ${fa(total)} پرداخت</span>`;
+
+if (total > 1) {
+const indices = group.installments.map(x=>x.planIndex);
+
+return `<details class="inst-group">
+<summary>${heading}</summary>
+<div class="group-body">
+${group.installments.map(row=>installmentHtml(row,true)).join('')}
+<button class="group-delete" onclick="removeInstGroup(${JSON.stringify(indices)})">حذف همه اقساط این عنوان</button>
+</div>
+</details>`;
+}
+
+return `<div class="inst-group">
+<div style="padding:12px">
+${heading}
+${installmentHtml(group.installments[0],true)}
+</div>
+</div>`;
+
+}).join('') :
+'<div class="empty">هنوز قسطی ثبت نشده است</div>';
+
 groups.map(group=>{
 const multi=group.installments.length>1;
 const paidCount=group.installments.filter(x=>x.paid).length;
