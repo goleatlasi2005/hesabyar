@@ -22,6 +22,8 @@ jobs:
         run: unzip -o hesabyar_android_studio_project_jalali.zip
       - name: Update app HTML
         run: cp index.html hesabyar_android/app/src/main/assets/index.html
+              - name: Update Android Java
+        run: cp MainActivity.java hesabyar_android/app/src/main/java/ir/hesabyar/app/MainActivity.java
       - name: Build APK
         run: |
           cd hesabyar_android
