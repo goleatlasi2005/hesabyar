@@ -107,7 +107,7 @@ button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:wh
 <div class="hint">تاریخ شمسی را با ۸ رقم وارد کنید؛ نیازی به نوشتن / نیست.</div>
 <div id="txCalendar" hidden></div>
 <button onclick="addTx()">ثبت تراکنش</button>
-<h3 style="margin-top:20px">آخرین تراکنش‌ها</h3>
+<h3 style="margin-top:20px">تراکنش‌های ماه جاری</h3>
 <div id="transactions"></div>
 </section>
 
@@ -153,7 +153,7 @@ button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:wh
 </section>
 
 <section id="report" class="panel" hidden>
-<h3>گزارش کلی</h3>
+<h3>گزارش ماهانه</h3>
 <div id="summary" class="muted"></div>
 </section>
   <section id="backup" class="panel" hidden>
@@ -270,6 +270,13 @@ return String(y).padStart(4,'0')+'/'+String(m).padStart(2,'0')+'/'+String(Math.m
 
 let tx=JSON.parse(localStorage.getItem('hy_tx')||'[]');
 let ins=JSON.parse(localStorage.getItem('hy_ins')||'[]');
+let monthReports=JSON.parse(localStorage.getItem('hy_month_reports')||'[]');
+if(!Array.isArray(monthReports))monthReports=[];
+monthReports=monthReports.filter(x=>x&&/^\d{4}\/\d{2}$/.test(x.month)).map(x=>({
+month:x.month,
+income:Number(x.income)||0,
+expense:Number(x.expense)||0
+}));
 
 function migrateDate(s){
 if(!s)return '';
@@ -293,9 +300,46 @@ paidDates:Array.isArray(old.paidDates)?old.paidDates:[]
 };
 });
 
+function monthKey(date){
+const m=String(date||'').match(/^(\d{4}\/\d{2})\/\d{2}$/);
+return m?m[1]:'';
+}
+
+function currentMonthKey(){
+const p=todayJ();
+return String(p.y).padStart(4,'0')+'/'+String(p.m).padStart(2,'0');
+}
+
+function archiveOldTransactions(){
+const current=currentMonthKey();
+const totals=new Map();
+monthReports.forEach(r=>{
+const old=totals.get(r.month)||{month:r.month,income:0,expense:0};
+old.income+=Number(r.income)||0;
+old.expense+=Number(r.expense)||0;
+totals.set(r.month,old);
+});
+const keep=[];
+tx.forEach(x=>{
+const key=monthKey(x.d);
+if(key&&key<current){
+const r=totals.get(key)||{month:key,income:0,expense:0};
+if(x.k==='in')r.income+=Number(x.a)||0;
+else if(x.k==='out')r.expense+=Number(x.a)||0;
+totals.set(key,r);
+}else{
+keep.push(x);
+}
+});
+tx=keep;
+monthReports=Array.from(totals.values()).sort((a,b)=>b.month.localeCompare(a.month));
+}
+
 function save(){
+archiveOldTransactions();
 localStorage.setItem('hy_tx',JSON.stringify(tx));
 localStorage.setItem('hy_ins',JSON.stringify(ins));
+localStorage.setItem('hy_month_reports',JSON.stringify(monthReports));
 render();
 }
   
@@ -305,7 +349,8 @@ app:'hesabyar',
 version:1,
 createdAt:new Date().toISOString(),
 tx:tx,
-ins:ins
+ins:ins,
+monthReports:monthReports
 };
 
 if(window.Hesabyar && typeof Hesabyar.exportBackup==='function'){
@@ -341,7 +386,12 @@ if(!confirm('بازیابی اطلاعات، اطلاعات فعلی حسابی�
 return;
 }
 
-tx=data.tx;
+tx=data.tx.map(x=>({...x,d:migrateDate(x.d)}));
+monthReports=Array.isArray(data.monthReports)?data.monthReports.filter(x=>x&&/^\d{4}\/\d{2}$/.test(x.month)).map(x=>({
+month:x.month,
+income:Number(x.income)||0,
+expense:Number(x.expense)||0
+})):[]; 
 ins=data.ins.map(x=>({
 ...x,
 paidDates:Array.isArray(x.paidDates)?x.paidDates:[]
@@ -360,6 +410,10 @@ const a=+$('amountInput').value;
 const d=parseJ($('dateInput').value);
 if(!t||a<=0||!d){
 alert('عنوان، مبلغ و تاریخ شمسی معتبر وارد کنید');
+return;
+}
+if(String(d.y).padStart(4,'0')+'/'+String(d.m).padStart(2,'0')!==currentMonthKey()){
+alert('تاریخ تراکنش باید در ماه شمسی جاری باشد');
 return;
 }
 tx.unshift({t,a,k:$('kind').value,d:cleanJ($('dateInput').value)});
@@ -495,24 +549,48 @@ save();
   }
 
 function render(){
-const inc=tx.filter(x=>x.k==='in').reduce((s,x)=>s+x.a,0);
-const out=tx.filter(x=>x.k==='out').reduce((s,x)=>s+x.a,0);
+const current=currentMonthKey();
+const currentTx=tx.map((x,i)=>({x,i})).filter(v=>monthKey(v.x.d)===current);
+const inc=currentTx.filter(v=>v.x.k==='in').reduce((s,v)=>s+(Number(v.x.a)||0),0);
+const out=currentTx.filter(v=>v.x.k==='out').reduce((s,v)=>s+(Number(v.x.a)||0),0);
 
 $('balance').textContent=fa(inc-out)+' تومان';
 $('income').textContent=fa(inc)+' تومان';
 $('expense').textContent=fa(out)+' تومان';
 
-$('transactions').innerHTML=tx.length?
-tx.map((x,i)=>`
+function transactionGroup(kind,label){
+const list=currentTx.filter(v=>v.x.k===kind);
+const total=list.reduce((s,v)=>s+(Number(v.x.a)||0),0);
+const body=list.length?list.map(v=>`
 <div class="item">
-<span>${safe(x.t)}<br><span class="muted">${safe(x.d||'بدون تاریخ')}</span></span>
-<span class="${x.k==='in'?'green':'red'}">
-${x.k==='in'?'+':'−'} ${fa(x.a)}
-<a href="#" onclick="removeTx(${i});return false">×</a>
+<span>${safe(v.x.t)}<br><span class="muted">${safe(v.x.d||'بدون تاریخ')}</span></span>
+<span class="${kind==='in'?'green':'red'}">
+${kind==='in'?'+':'−'} ${fa(v.x.a)}
+<a href="#" onclick="removeTx(${v.i});return false">×</a>
 </span>
-</div>`).join(''):
-'<div class="empty">هنوز تراکنشی ثبت نشده است</div>';
+</div>`).join(''):'<div class="empty">در این ماه موردی ثبت نشده است</div>';
+return `<details class="inst-group">
+<summary><div class="group-main"><div class="group-title">${label}</div>
+<div class="group-meta">${fa(list.length)} تراکنش · ${fa(total)} تومان</div></div></summary>
+<div class="group-body">${body}</div>
+</details>`;
+}
+$('transactions').innerHTML=
+transactionGroup('in','درآمدها')+
+transactionGroup('out','هزینه‌ها');
 
+const monthNames=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+$('summary').innerHTML=monthReports.length?monthReports.map(r=>{
+const [y,m]=r.month.split('/').map(Number);
+const title=(monthNames[m-1]||('ماه '+fa(m)))+' '+fa(y);
+return `<details class="inst-group">
+<summary><div class="group-main"><div class="group-title">${safe(title)}</div>
+<div class="group-meta">گزارش ماهانه</div></div></summary>
+<div class="group-body">
+<div class="item"><span>مجموع درآمد</span><strong class="green">${fa(r.income)} تومان</strong></div>
+<div class="item"><span>مجموع هزینه</span><strong class="red">${fa(r.expense)} تومان</strong></div>
+</div></details>`;
+}).join(''):'<div class="empty">هنوز گزارشی از ماه‌های گذشته ثبت نشده است</div>';
 
 /* ساخت گروه‌های اقساط؛ گروه‌بندی اقساط تک‌تاریخی با عنوان یکسان */
 
@@ -644,13 +722,12 @@ ${installmentHtml(group.installments[0],true)}
 const rows = groups.flatMap(group => group.installments);
 const totalRows=rows.length;
 const paidRows=rows.filter(x=>x.paid).length;
-$('summary').textContent=
-'تعداد تراکنش‌ها: '+fa(tx.length)+
-' | برنامه‌های اقساط: '+fa(ins.length)+
+// گزارش ماهانه در بالای تابع ساخته می‌شود؛ این بخش فقط آمار اقساط را نگه می‌دارد.
+$('summary').dataset.installments=
+'برنامه‌های اقساط: '+fa(ins.length)+
 ' | سررسیدها: '+fa(totalRows)+
 ' | پرداخت‌شده: '+fa(paidRows)+
-' | پرداخت‌نشده: '+fa(totalRows-paidRows)+
-' | مانده: '+fa(inc-out)+' تومان';
+' | پرداخت‌نشده: '+fa(totalRows-paidRows);
 }
 
 function show(id,b){
@@ -732,6 +809,10 @@ String(now.d).padStart(2,'0');
 
 $('dateInput').value=today;
 $('instDate').value=today;
+archiveOldTransactions();
+localStorage.setItem('hy_tx',JSON.stringify(tx));
+localStorage.setItem('hy_ins',JSON.stringify(ins));
+localStorage.setItem('hy_month_reports',JSON.stringify(monthReports));
 render();
 </script>
 </body>
