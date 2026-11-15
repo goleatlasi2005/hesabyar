@@ -15,7 +15,7 @@ header{background:linear-gradient(135deg,#0b1f3a,#153d62);color:white;padding:25
 .balance{margin-top:24px;font-size:13px;opacity:.8}
 .amount{font-size:29px;font-weight:bold;margin-top:7px}
 .wrap{padding:16px;max-width:700px;margin:auto}
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:-2px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .card{background:white;border-radius:17px;padding:16px;box-shadow:0 5px 18px #142b4510}
 .card small{color:#7b8798}
 .num{font-size:19px;font-weight:bold;margin-top:9px}
@@ -49,6 +49,13 @@ button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:wh
 .days button{margin:0;padding:9px 0;background:#f1f4f8;color:#17243a;font-size:12px}
 .days button.selected{background:#07966a;color:white}
 .small-note{font-size:11px;color:#8290a1;line-height:1.8}
+.pay-btn{width:auto;min-width:105px;margin:0;padding:9px 11px;background:#e6f6ef;color:#087c55;font-size:11px}
+.pay-btn.paid{background:#07966a;color:white}
+.due-date{font-weight:bold;margin-bottom:5px}
+.paid-label{color:#07966a;font-size:11px}
+.unpaid-label{color:#d18a20;font-size:11px}
+.plan-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;padding-top:10px;border-top:1px solid #edf0f4}
+.plan-head button{width:auto;margin:0;padding:6px 9px;background:#fff0f0;color:#c44;font-size:11px}
 </style>
 </head>
 <body>
@@ -126,7 +133,8 @@ button{border:0;border-radius:11px;padding:13px 15px;background:#0b1f3a;color:wh
 
 <button onclick="addInst()">ثبت قسط</button>
 <p class="small-note">اگر ماهی روز انتخابی را نداشته باشد، سررسید آن ماه به آخرین روز همان ماه منتقل می‌شود.</p>
-<h3 style="margin-top:20px">فهرست اقساط</h3>
+<h3 style="margin-top:20px">فهرست سررسید اقساط</h3>
+<div class="small-note">اقساط بر اساس تاریخ مرتب شده‌اند. وضعیت پرداخت هر سررسید جداگانه ثبت می‌شود.</div>
 <div id="installments"></div>
 </section>
 
@@ -170,10 +178,8 @@ const cache={};
 function findJDate(y,m,d){
 const key=y+'/'+m+'/'+d;
 if(cache[key])return cache[key];
-
 const start=Date.UTC(y+621,0,1,12);
 const end=Date.UTC(y+623,0,1,12);
-
 for(let t=start;t<end;t+=86400000){
 const dt=new Date(t);
 const p=parts(dt);
@@ -189,9 +195,7 @@ function todayJ(){return parts(new Date())}
 
 function toJ(date){
 const p=parts(date);
-return String(p.y).padStart(4,'0')+'/'+
-String(p.m).padStart(2,'0')+'/'+
-String(p.d).padStart(2,'0');
+return String(p.y).padStart(4,'0')+'/'+String(p.m).padStart(2,'0')+'/'+String(p.d).padStart(2,'0');
 }
 
 function cleanJ(s){
@@ -230,9 +234,7 @@ return Math.round((b-a)/86400000);
 }
 
 function monthDate(y,m,d){
-return String(y).padStart(4,'0')+'/'+
-String(m).padStart(2,'0')+'/'+
-String(Math.min(d,monthDays(y,m))).padStart(2,'0');
+return String(y).padStart(4,'0')+'/'+String(m).padStart(2,'0')+'/'+String(Math.min(d,monthDays(y,m))).padStart(2,'0');
 }
 
 let tx=JSON.parse(localStorage.getItem('hy_tx')||'[]');
@@ -250,11 +252,14 @@ return jValid(v)?v:'';
 
 tx=tx.map(x=>({...x,d:migrateDate(x.d)}));
 
-ins=ins.map(x=>{
-if(x.start){
-return {...x,start:migrateDate(x.start),end:x.end?migrateDate(x.end):''};
-}
-return {...x,start:migrateDate(x.d),mode:'once',count:1,end:''};
+ins=ins.map((x,i)=>{
+const old=x.start?x:{...x,start:x.d,mode:'once',count:1,end:''};
+return {
+...old,
+start:migrateDate(old.start),
+end:old.end?migrateDate(old.end):'',
+paidDates:Array.isArray(old.paidDates)?old.paidDates:[]
+};
 });
 
 function save(){
@@ -267,17 +272,11 @@ function addTx(){
 const t=$('title').value.trim();
 const a=+$('amountInput').value;
 const d=parseJ($('dateInput').value);
-
 if(!t||a<=0||!d){
 alert('عنوان، مبلغ و تاریخ شمسی معتبر وارد کنید');
 return;
 }
-
-tx.unshift({
-t,a,k:$('kind').value,
-d:cleanJ($('dateInput').value)
-});
-
+tx.unshift({t,a,k:$('kind').value,d:cleanJ($('dateInput').value)});
 $('title').value='';
 $('amountInput').value='';
 save();
@@ -302,16 +301,15 @@ function addInst(){
 const t=$('instTitle').value.trim();
 const a=+$('instAmount').value;
 const d=parseJ($('instDate').value);
-
 if(!t||a<=0||!d){
 alert('عنوان، مبلغ و تاریخ شمسی معتبر وارد کنید');
 return;
 }
-
 let item={
 t,a,mode,
 start:cleanJ($('instDate').value),
-count:1,end:''
+count:1,end:'',
+paidDates:[]
 };
 
 if(mode==='monthly'){
@@ -339,22 +337,18 @@ item.count=0;
 }
 
 ins.push(item);
-
 if(window.Hesabyar){
 Hesabyar.notify('قسط جدید ثبت شد',t+' - '+fa(a)+' تومان');
 }
-
 $('instTitle').value='';
 $('instAmount').value='';
 save();
 }
 
 function getDates(x){
-if(x.mode!=='monthly')return [x.start||x.d];
-
+if(x.mode!=='monthly')return [x.start||x.d].filter(Boolean);
 const p=parseJ(x.start);
 if(!p)return [];
-
 let out=[];
 if(x.end){
 for(let i=0;i<600;i++){
@@ -365,13 +359,26 @@ out.push(v);
 }
 return out;
 }
-
 const limit=x.count||600;
 for(let i=0;i<limit;i++){
 const q=addMonths(p.y,p.m,i);
 out.push(monthDate(q.y,q.m,p.d));
 }
 return out;
+}
+
+function togglePaid(planIndex,date){
+const plan=ins[planIndex];
+if(!plan.paidDates)plan.paidDates=[];
+const index=plan.paidDates.indexOf(date);
+if(index>=0){
+if(!confirm('وضعیت این قسط به پرداخت‌نشده تغییر کند؟'))return;
+plan.paidDates.splice(index,1);
+}else{
+if(!confirm('پرداخت این قسط ثبت شود؟'))return;
+plan.paidDates.push(date);
+}
+save();
 }
 
 function safe(s){
@@ -388,7 +395,7 @@ save();
 }
 
 function removeInst(i){
-if(confirm('این برنامه اقساط حذف شود؟')){
+if(confirm('تمام سررسیدهای این برنامه اقساط حذف شوند؟')){
 ins.splice(i,1);
 save();
 }
@@ -413,28 +420,58 @@ ${x.k==='in'?'+':'−'} ${fa(x.a)}
 </div>`).join(''):
 '<div class="empty">هنوز تراکنشی ثبت نشده است</div>';
 
-$('installments').innerHTML=ins.length?
-ins.map((x,i)=>{
-const ds=getDates(x);
-const detail=x.mode==='monthly'?
-'تکرار ماهانه · '+fa(ds.length)+' قسط':'یک قسط';
-return `
+/* ساخت فهرست مستقل برای تک‌تک سررسیدها */
+let rows=[];
+ins.forEach((plan,planIndex)=>{
+getDates(plan).forEach(date=>{
+rows.push({
+planIndex,
+date,
+title:plan.t,
+amount:plan.a,
+paid:(plan.paidDates||[]).includes(date)
+});
+});
+});
+
+/* مرتب‌سازی بر اساس تاریخ شمسی */
+rows.sort((a,b)=>a.date.localeCompare(b.date));
+
+$('installments').innerHTML=rows.length?
+rows.map(row=>`
 <div class="item">
-<span>${safe(x.t)}<br>
-<span class="muted">${detail}<br>
-شروع: ${safe(ds[0]||x.start||x.d||'—')}
-${x.end?'<br>پایان: '+safe(x.end):''}
-</span></span>
-<span>${fa(x.a)} تومان<br>
-<a href="#" onclick="removeInst(${i});return false">حذف ×</a>
-</span>
-</div>`;
-}).join(''):
+<div style="flex:1;min-width:0">
+<div class="due-date">${safe(row.title)}</div>
+<div class="muted">سررسید: ${safe(row.date)}</div>
+<div style="margin-top:5px">
+${row.paid?
+'<span class="paid-label">✓ پرداخت‌شده</span>':
+'<span class="unpaid-label">● پرداخت‌نشده</span>'}
+</div>
+<div class="muted" style="margin-top:4px">${fa(row.amount)} تومان</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px">
+<button class="pay-btn ${row.paid?'paid':''}"
+onclick="togglePaid(${row.planIndex},'${row.date}')">
+${row.paid?'✓ پرداخت شد':'پرداخت کردم'}
+</button>
+</div>
+</div>`).join('')+
+ins.map((x,i)=>`
+<div class="plan-head">
+<span class="muted">برنامه: ${safe(x.t)}</span>
+<button onclick="removeInst(${i})">حذف برنامه</button>
+</div>`).join(''):
 '<div class="empty">هنوز قسطی ثبت نشده است</div>';
 
+const totalRows=rows.length;
+const paidRows=rows.filter(x=>x.paid).length;
 $('summary').textContent=
 'تعداد تراکنش‌ها: '+fa(tx.length)+
 ' | برنامه‌های اقساط: '+fa(ins.length)+
+' | سررسیدها: '+fa(totalRows)+
+' | پرداخت‌شده: '+fa(paidRows)+
+' | پرداخت‌نشده: '+fa(totalRows-paidRows)+
 ' | مانده: '+fa(inc-out)+' تومان';
 }
 
@@ -447,21 +484,14 @@ b.classList.add('active');
 let calState={};
 
 function toggleCalendar(which){
-const map={
-tx:'txCalendar',
-inst:'instCalendar',
-end:'endCalendar'
-};
+const map={tx:'txCalendar',inst:'instCalendar',end:'endCalendar'};
 const id=map[which];
 const el=$(id);
 const opening=el.hidden;
-
 ['txCalendar','instCalendar','endCalendar'].forEach(x=>$(x).hidden=true);
-
 if(opening){
 el.hidden=false;
-const input=which==='tx'?'dateInput':
-which==='inst'?'instDate':'instEndDate';
+const input=which==='tx'?'dateInput':which==='inst'?'instDate':'instEndDate';
 const p=parseJ($(input).value)||todayJ();
 calState[which]={y:p.y,m:p.m,input};
 drawCal(which);
@@ -470,35 +500,23 @@ drawCal(which);
 
 function drawCal(which){
 const st=calState[which];
-const el=$({
-tx:'txCalendar',
-inst:'instCalendar',
-end:'endCalendar'
-}[which]);
-
+const el=$({tx:'txCalendar',inst:'instCalendar',end:'endCalendar'}[which]);
 const selected=parseJ($(st.input).value);
 const first=findJDate(st.y,st.m,1);
 const offset=(first.getUTCDay()+1)%7;
 const days=monthDays(st.y,st.m);
-
 let html='<div class="calendar"><div class="cal-head">';
 html+='<button onclick="shiftCal(\''+which+'\',-1)">‹</button>';
 html+='<span class="cal-title">'+fa(st.y)+' / '+fa(st.m)+'</span>';
 html+='<button onclick="shiftCal(\''+which+'\',1)">›</button>';
 html+='</div><div class="days">';
-
-['ش','ی','د','س','چ','پ','ج'].forEach(x=>{
-html+='<span>'+x+'</span>';
-});
-
+['ش','ی','د','س','چ','پ','ج'].forEach(x=>html+='<span>'+x+'</span>');
 for(let i=0;i<offset;i++)html+='<span></span>';
-
 for(let d=1;d<=days;d++){
 const sel=selected&&selected.y===st.y&&selected.m===st.m&&selected.d===d;
 html+='<button class="'+(sel?'selected':'')+
 '" onclick="pickCal(\''+which+'\','+d+')">'+fa(d)+'</button>';
 }
-
 html+='</div></div>';
 el.innerHTML=html;
 }
@@ -514,8 +532,7 @@ drawCal(which);
 function pickCal(which,d){
 const s=calState[which];
 $(s.input).value=monthDate(s.y,s.m,d);
-const id=which==='tx'?'txCalendar':
-which==='inst'?'instCalendar':'endCalendar';
+const id=which==='tx'?'txCalendar':which==='inst'?'instCalendar':'endCalendar';
 $(id).hidden=true;
 }
 
